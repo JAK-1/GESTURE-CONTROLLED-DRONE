@@ -12,3 +12,7 @@ TX, built with a arduino pro mini, mpu6050 and a nrf24l01, comes into action whe
 RX, built wwith an arduino mega and a nrf24l01, sends received signals to the multiwii fc
 
 the receiver code has serial and serial1 (P.S: Its not an error, one is for serial debugging and the other is for nrf)
+
+Additional Req LIb: RF24
+
+Adddition files are linked
