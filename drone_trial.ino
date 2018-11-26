@@ -1,11 +1,6 @@
-#include <SPI.h>      //SPI library for communicate with the nRF24L01+
-#include "RF24.h"     //The main library of the nRF24L01+
 #include <Servo.h>
 #define LED 13
-int data[3];
-RF24 radio(9,10);
-//Create a pipe addresses for the communicate
-const uint64_t pipe = 0xE8E8F0F0E1LL;
+// DEFINING  
 Servo AIL;
 Servo ELE;
 Servo THR;
@@ -34,20 +29,26 @@ int WRBL_THRESH = 50;
 void setup() {
 
   Serial.begin(9600); //debugging Serial port baudrate
-  //Serial1.begin(38400); //BT transmission Serial port baudrate
-  radio.begin();                    //Start the nRF24 communicate            
-  radio.openReadingPipe(1, pipe);   //Sets the address of the transmitter to which the program will receive data.
-  radio.startListening();  
-  pinMode(22, OUTPUT); //Flight controller - Aileron Pin
-  pinMode(24, OUTPUT); //Flight controller - Elevator Pin
-  pinMode(26, OUTPUT); //Flight controller - Throttle Pin
-  pinMode(28, OUTPUT); //Flight controller - Rudder Pin
+  Serial1.begin(9600); //BT transmission Serial port baudrate
+  pinMode(9, OUTPUT); //Flight controller - Aileron Pin
+  pinMode(10, OUTPUT); //Flight controller - Elevator Pin
+  pinMode(11, OUTPUT); //Flight controller - Throttle Pin
+  pinMode(12, OUTPUT); //Flight controller - Rudder Pin
   pinMode(13, OUTPUT); //LED pin
-  AIL.attach(22); //Servo settings
-  ELE.attach(24);
-  THR.attach(26);
-  RUD.attach(28);
-  rec_ail = pulseIn(3, HIGH, 20000); // Take 10 samples of receiver readings
+  AIL.attach(9); //Servo settings
+  ELE.attach(10);
+  THR.attach(11);
+  RUD.attach(12);
+  THR.writeMicroseconds(1000);  //down (this may need to be 2000)
+  RUD.writeMicroseconds(1500);    //centre
+  AIL.writeMicroseconds(1500);   //centre
+  ELE.writeMicroseconds(1500);  //centre
+
+  delay(5000);  //wait 5 seconds for the system to stabIlise
+
+  RUD.writeMicroseconds(2000);    //right.  Throttle is already at a minimum //ARMING THE KK
+
+rec_ail = pulseIn(3, HIGH, 20000); // Take 10 samples of receiver readings
   for (int i = 0; i < 10; i++) {
     mid_rec += rec_ail;
   }
@@ -55,9 +56,7 @@ void setup() {
   mid_rec = mid_rec / 10; //calculate average receiver's mid-stick values
   min_rec = mid_rec - 450;//calculate receiver's min-stick values
   max_rec = mid_rec + 450;//calculate receiver's max-stick values
-
 }
-
 
 void loop() {
   // read pwm values from the receiver
@@ -67,6 +66,36 @@ void loop() {
   rec_rud = pulseIn(6, HIGH, 20000);
   rec_aux = pulseIn(7, HIGH, 20000);
 
+  //check if aux switch is flipped. if so enable wearable control
+  if(rec_aux > 0 && rec_aux < (ref_aux - 400)  ){
+    digitalWrite(LED,HIGH); //Indicates that wearable is enabled 
+    read_wearable(); //call wearable BT data parser function
+    rud = mid_rec; //lock rudder to mid-stick
+
+    //If there's any input from the safety pilot on Aileron, Elevator, Throttle or Rudder, enable the main transmitter to control the drone
+    if(rec_ail > mid_rec + XMIT_THRESH || rec_ail < mid_rec - XMIT_THRESH){
+      ail = rec_ail;
+    }
+    if(rec_ele > mid_rec + XMIT_THRESH || rec_ele < mid_rec - XMIT_THRESH){
+      ele = rec_ele;
+    }
+    if(rec_thr > min_rec + XMIT_THRESH){
+      thr = rec_thr;
+    }
+    if(rec_rud > mid_rec + XMIT_THRESH || rec_rud < mid_rec - XMIT_THRESH){
+      rud = rec_rud;
+    }
+  }
+
+  else{
+    //else, pass remote control signals to the flight controller
+    digitalWrite(LED, LOW);//Indicates that wearable is disabled
+    ail = rec_ail;
+    ele = rec_ele;
+    thr = rec_thr;
+    rud = rec_rud;
+  }
+  // write pwm values to the flight controller
   AIL.writeMicroseconds(ail);
   ELE.writeMicroseconds(ele);
   THR.writeMicroseconds(thr);
@@ -74,16 +103,30 @@ void loop() {
   
   print_transmit();
 
-}
+   } 
 
 void read_wearable(){
-  //radio.print(1);
-  while (radio.available())
+  Serial1.print(1);
+  while (Serial1.available())
   {
-    radio.read(data, sizeof(data)); // receive a character from BT port
-    x = data[0];
-    y = data[1];
-    z = data[2];
+    char data = Serial1.read(); // receive a character from BT port
+    Axes.concat(data); // add the received character to buffer 'Axes'
+    if (data == 'x') //if delimeter 'x' is read, assign x-axis value
+    {
+      x = Axes.toInt();
+      Axes = "";
+    }
+    else if (data == 'y') //if delimeter 'y' is read, assign y-axis value
+    {
+      y = Axes.toInt();
+      Axes = "";
+    }
+
+    else if (data == 'z') //if delimeter 'z' is read, assign z-axis value
+    {
+      z = Axes.toInt();
+      Axes = "";
+    }
   }
 
   if(x > WRBL_THRESH){//if the wearable is tilted to the right, add correlated value to Aileron's default PWM signal.
