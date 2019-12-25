@@ -15,4 +15,5 @@ the receiver code has serial and serial1 (P.S: Its not an error, one is for seri
 
 Additional Req LIb: bluetooth libraries
 
-Adddition files are linked
+Adddition files are linkedthe latency increases as the distance increases. 
+If any issue occurs, im not responsible.
